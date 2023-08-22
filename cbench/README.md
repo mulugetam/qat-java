@@ -11,5 +11,5 @@ gcc -I $QZ_ROOT/include -L $QZ_ROOT/src/.libs -Wl,-rpath=$QZ_ROOT/src/.libs -lqa
 
 Run:
 ```
-./qat_bench 0 sample.txt
+./qat_bench 0 dickens
 ```
