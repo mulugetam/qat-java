@@ -52,97 +52,42 @@ enum InternalJNI {
       int pmode,
       int dataFormat,
       int hwBufferSize,
-      int logLevel);
+      int logLevel,
+      int retryCount);
 
   static native int maxCompressedLength(int qzKey, long sourceSize);
 
   // ---- compress ----
 
   static native long compressBytesBytes(
-      int qzKey,
-      byte[] src,
-      int srcOff,
-      int srcLen,
-      byte[] dst,
-      int dstOff,
-      int dstLen,
-      int retryCount);
+      int qzKey, byte[] src, int srcOff, int srcLen, byte[] dst, int dstOff, int dstLen);
 
   static native long compressBytesBuffer(
-      int qzKey,
-      byte[] src,
-      int srcOff,
-      int srcLen,
-      ByteBuffer dst,
-      int dstPos,
-      int dstLen,
-      int retryCount);
+      int qzKey, byte[] src, int srcOff, int srcLen, ByteBuffer dst, int dstPos, int dstLen);
 
   static native long compressBufferBytes(
-      int qzKey,
-      ByteBuffer src,
-      int srcPos,
-      int srcLen,
-      byte[] dst,
-      int dstOff,
-      int dstLen,
-      int retryCount);
+      int qzKey, ByteBuffer src, int srcPos, int srcLen, byte[] dst, int dstOff, int dstLen);
 
   static native long compressBufferBuffer(
-      int qzKey,
-      ByteBuffer src,
-      int srcPos,
-      int srcLen,
-      ByteBuffer dst,
-      int dstPos,
-      int dstLen,
-      int retryCount);
+      int qzKey, ByteBuffer src, int srcPos, int srcLen, ByteBuffer dst, int dstPos, int dstLen);
 
   // ---- decompress ----
 
   static native long decompressBytesBytes(
-      int qzKey,
-      byte[] src,
-      int srcOff,
-      int srcLen,
-      byte[] dst,
-      int dstOff,
-      int dstLen,
-      int retryCount);
+      int qzKey, byte[] src, int srcOff, int srcLen, byte[] dst, int dstOff, int dstLen);
 
   static native long decompressBytesBuffer(
-      int qzKey,
-      byte[] src,
-      int srcOff,
-      int srcLen,
-      ByteBuffer dst,
-      int dstPos,
-      int dstLen,
-      int retryCount);
+      int qzKey, byte[] src, int srcOff, int srcLen, ByteBuffer dst, int dstPos, int dstLen);
 
   static native long decompressBufferBytes(
-      int qzKey,
-      ByteBuffer src,
-      int srcPos,
-      int srcLen,
-      byte[] dst,
-      int dstOff,
-      int dstLen,
-      int retryCount);
+      int qzKey, ByteBuffer src, int srcPos, int srcLen, byte[] dst, int dstOff, int dstLen);
 
   static native long decompressBufferBuffer(
-      int qzKey,
-      ByteBuffer src,
-      int srcPos,
-      int srcLen,
-      ByteBuffer dst,
-      int dstPos,
-      int dstLen,
-      int retryCount);
+      int qzKey, ByteBuffer src, int srcPos, int srcLen, ByteBuffer dst, int dstPos, int dstLen);
 
   // ---- compressFull (native loop over sub-blocks) ----
 
-  static native int compressFullBytesBytes(
+  static native long compressFullBytesBytes(
       int qzKey,
       byte[] src,
       int srcOff,
@@ -152,20 +97,12 @@ enum InternalJNI {
       int dstOff,
       int dstLen,
       int[] sizes,
-      int startBlock,
-      int retryCount);
+      int startBlock);
 
   // ---- decompressFull (native loop over concatenated frames) ----
 
-  static native int decompressFullBytesBytes(
-      int qzKey,
-      byte[] src,
-      int srcOff,
-      int srcLen,
-      byte[] dst,
-      int dstOff,
-      int dstLen,
-      int retryCount);
+  static native long decompressFullBytesBytes(
+      int qzKey, byte[] src, int srcOff, int srcLen, byte[] dst, int dstOff, int dstLen);
 
   // ---- other ----
 
@@ -178,14 +115,4 @@ enum InternalJNI {
   static native int teardown(int qzKey);
 
   static native void setLogLevel(int logLevel);
-
-  /** Extract bytes_read from a packed result. Caller must check {@code r >= 0} first. */
-  static int bytesRead(long r) {
-    return (int) (r & 0x7FFFFFFFL);
-  }
-
-  /** Extract bytes_written from a packed result. Caller must check {@code r >= 0} first. */
-  static int bytesWritten(long r) {
-    return (int) ((r >>> 31) & 0x7FFFFFFFL);
-  }
 }

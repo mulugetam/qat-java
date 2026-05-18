@@ -29,6 +29,7 @@ public class QatDecompressorInputStream extends FilterInputStream {
   private QatZipper qzip;
   private boolean closed;
   private boolean eof;
+  private final int maxOutputBufferSize;
 
   /** The default size in bytes of the input buffer (64KB). */
   public static final int DEFAULT_BUFFER_SIZE = 1 << 16;
@@ -68,11 +69,11 @@ public class QatDecompressorInputStream extends FilterInputStream {
     super(in);
     if (bufferSize <= 0) throw new IllegalArgumentException();
     Objects.requireNonNull(in);
-    if (builder.getAlgorithm().equals(Algorithm.ZSTD)) MAX_BUFFER_SIZE = Integer.MAX_VALUE - 1;
+    maxOutputBufferSize = Integer.MAX_VALUE - 8;
     int inputBufferSize = 0;
     try {
       inputBufferSize = Math.max(bufferSize, in.available());
-      inputBufferSize = Math.min(MAX_BUFFER_SIZE, inputBufferSize);
+      inputBufferSize = Math.min(maxOutputBufferSize, inputBufferSize);
     } catch (IOException ioe) {
       inputBufferSize = bufferSize;
     }
@@ -235,8 +236,9 @@ public class QatDecompressorInputStream extends FilterInputStream {
 
   private void growOutputBuffer() {
     int oldSize = outputBuffer.length;
-    if (oldSize == MAX_BUFFER_SIZE) throw new BufferOverflowException();
-    int newSize = (oldSize > Integer.MAX_VALUE / 2) ? MAX_BUFFER_SIZE : oldSize * 2;
+    if (oldSize == maxOutputBufferSize) throw new BufferOverflowException();
+    int newSize = (oldSize > Integer.MAX_VALUE / 2) ? maxOutputBufferSize : oldSize * 2;
+    newSize = Math.min(newSize, maxOutputBufferSize);
     outputBuffer = new byte[newSize];
     outputPosition = 0;
     outputBufferLimit = outputBuffer.length;
