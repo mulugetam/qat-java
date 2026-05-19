@@ -89,9 +89,6 @@ public class QatZipper {
   /** The default execution mode. */
   public static final Mode DEFAULT_MODE = Mode.AUTO;
 
-  /** The default number of times QatZipper attempts to acquire hardware resources. */
-  public static final int DEFAULT_RETRY_COUNT = 0;
-
   /** The default polling mode. */
   public static final PollingMode DEFAULT_POLLING_MODE = PollingMode.BUSY;
 
@@ -109,7 +106,6 @@ public class QatZipper {
   private final Algorithm algorithm;
   private final int level;
   private final Mode mode;
-  private final int retryCount;
   private final PollingMode pollingMode;
   private final DataFormat dataFormat;
   private final HardwareBufferSize hwBufferSize;
@@ -286,7 +282,6 @@ public class QatZipper {
             ? DEFAULT_COMPRESSION_LEVEL_ZSTD
             : DEFAULT_COMPRESSION_LEVEL_DEFLATE;
     private Mode mode = DEFAULT_MODE;
-    private int retryCount = DEFAULT_RETRY_COUNT;
     private PollingMode pollingMode = DEFAULT_POLLING_MODE;
     private DataFormat dataFormat = DEFAULT_DATA_FORMAT;
     private HardwareBufferSize hwBufferSize = DEFAULT_HW_BUFFER_SIZE;
@@ -337,20 +332,6 @@ public class QatZipper {
      */
     public Builder mode(Mode mode) {
       this.mode = Objects.requireNonNull(mode, "mode cannot be null");
-      return this;
-    }
-
-    /**
-     * Sets the number of attempts to acquire hardware resouces before giving up.
-     *
-     * @param retryCount the number of retries before giving up.
-     * @return This Builder.
-     */
-    public Builder retryCount(int retryCount) {
-      if (retryCount < 0) {
-        throw new IllegalArgumentException("retryCount cannot be negative");
-      }
-      this.retryCount = retryCount;
       return this;
     }
 
@@ -431,13 +412,10 @@ public class QatZipper {
     this.algorithm = builder.algorithm;
     this.level = builder.level;
     this.mode = builder.mode;
-    this.retryCount = builder.retryCount;
     this.pollingMode = builder.pollingMode;
     this.dataFormat = builder.dataFormat;
     this.hwBufferSize = builder.hwBufferSize;
     this.logLevel = builder.logLevel;
-
-    if (retryCount < 0) throw new IllegalArgumentException("Invalid value for retry count");
 
     // Initialize QAT session via JNI
     int status =
@@ -449,8 +427,7 @@ public class QatZipper {
             pollingMode.ordinal(),
             dataFormat.ordinal(),
             hwBufferSize.getValue(),
-            logLevel.ordinal(),
-            retryCount);
+            logLevel.ordinal());
 
     if (logLevel != LogLevel.NONE) {
       InternalJNI.setLogLevel(logLevel.ordinal());
@@ -571,8 +548,8 @@ public class QatZipper {
       throw new RuntimeException("QAT compression failed with error code: " + result);
     }
 
-    bytesRead = bytesRead(result);
-    bytesWritten = bytesWritten(result);
+    bytesRead = unpackBytesRead(result);
+    bytesWritten = unpackBytesWritten(result);
     return bytesWritten;
   }
 
@@ -714,8 +691,8 @@ public class QatZipper {
         bytesWritten = 0;
         throw new RuntimeException("QAT compression failed with error code: " + result);
       }
-      int br = bytesRead(result);
-      int bw = bytesWritten(result);
+      int br = unpackBytesRead(result);
+      int bw = unpackBytesWritten(result);
       bytesRead = br;
       bytesWritten = bw;
       src.position(initialSrcPos + br);
@@ -778,8 +755,8 @@ public class QatZipper {
         bytesRead = bytesWritten = 0;
         throw new RuntimeException("QAT compression failed with error code: " + result);
       }
-      compressed = bytesWritten(result);
-      bytesRead = bytesRead(result);
+      compressed = unpackBytesWritten(result);
+      bytesRead = unpackBytesRead(result);
     } else {
       // src is array-backed
       long result =
@@ -794,8 +771,8 @@ public class QatZipper {
         bytesRead = bytesWritten = 0;
         throw new RuntimeException("QAT compression failed with error code: " + result);
       }
-      compressed = bytesWritten(result);
-      bytesRead = bytesRead(result);
+      compressed = unpackBytesWritten(result);
+      bytesRead = unpackBytesRead(result);
     }
     dstStaging.position(0);
     dstStaging.limit(compressed);
@@ -825,8 +802,8 @@ public class QatZipper {
         bytesRead = bytesWritten = 0;
         throw new RuntimeException("QAT compression failed with error code: " + result);
       }
-      compressed = bytesWritten(result);
-      bytesRead = bytesRead(result);
+      compressed = unpackBytesWritten(result);
+      bytesRead = unpackBytesRead(result);
       dst.position(initialDstPos + compressed);
     } else if (dst.hasArray()) {
       long result =
@@ -841,8 +818,8 @@ public class QatZipper {
         bytesRead = bytesWritten = 0;
         throw new RuntimeException("QAT compression failed with error code: " + result);
       }
-      compressed = bytesWritten(result);
-      bytesRead = bytesRead(result);
+      compressed = unpackBytesWritten(result);
+      bytesRead = unpackBytesRead(result);
       dst.position(initialDstPos + compressed);
     } else {
       // both mixed-mode -- stage both sides
@@ -867,8 +844,8 @@ public class QatZipper {
       bytesRead = bytesWritten = 0;
       throw new RuntimeException("QAT compression failed with error code: " + result);
     }
-    int compressed = bytesWritten(result);
-    bytesRead = bytesRead(result);
+    int compressed = unpackBytesWritten(result);
+    bytesRead = unpackBytesRead(result);
     dstStaging.position(0);
     dstStaging.limit(compressed);
     dst.put(dstStaging);
@@ -1087,8 +1064,8 @@ public class QatZipper {
       throw new RuntimeException("QAT decompression failed with error code: " + result);
     }
 
-    bytesRead = bytesRead(result);
-    bytesWritten = bytesWritten(result);
+    bytesRead = unpackBytesRead(result);
+    bytesWritten = unpackBytesWritten(result);
     return bytesWritten;
   }
 
@@ -1139,8 +1116,8 @@ public class QatZipper {
 
     if (result >= 0) {
       // All remaining blocks compressed successfully
-      bytesRead = bytesRead(result);
-      bytesWritten = bytesWritten(result);
+      bytesRead = unpackBytesRead(result);
+      bytesWritten = unpackBytesWritten(result);
       return bytesWritten;
     }
 
@@ -1188,8 +1165,8 @@ public class QatZipper {
       throw new RuntimeException("QAT decompression failed with error code: " + result);
     }
 
-    bytesRead = bytesRead(result);
-    bytesWritten = bytesWritten(result);
+    bytesRead = unpackBytesRead(result);
+    bytesWritten = unpackBytesWritten(result);
     return bytesWritten;
   }
 
@@ -1311,8 +1288,8 @@ public class QatZipper {
         bytesWritten = 0;
         throw new RuntimeException("QAT decompression failed with error code: " + result);
       }
-      int br = bytesRead(result);
-      int bw = bytesWritten(result);
+      int br = unpackBytesRead(result);
+      int bw = unpackBytesWritten(result);
       bytesRead = br;
       bytesWritten = bw;
       src.position(initialSrcPos + br);
@@ -1367,8 +1344,8 @@ public class QatZipper {
         bytesRead = bytesWritten = 0;
         throw new RuntimeException("QAT decompression failed with error code: " + result);
       }
-      decompressed = bytesWritten(result);
-      bytesRead = bytesRead(result);
+      decompressed = unpackBytesWritten(result);
+      bytesRead = unpackBytesRead(result);
     } else {
       long result =
           decompressBytesBuffer(
@@ -1382,8 +1359,8 @@ public class QatZipper {
         bytesRead = bytesWritten = 0;
         throw new RuntimeException("QAT decompression failed with error code: " + result);
       }
-      decompressed = bytesWritten(result);
-      bytesRead = bytesRead(result);
+      decompressed = unpackBytesWritten(result);
+      bytesRead = unpackBytesRead(result);
     }
     dstStaging.position(0);
     dstStaging.limit(decompressed);
@@ -1409,8 +1386,8 @@ public class QatZipper {
         bytesRead = bytesWritten = 0;
         throw new RuntimeException("QAT decompression failed with error code: " + result);
       }
-      decompressed = bytesWritten(result);
-      bytesRead = bytesRead(result);
+      decompressed = unpackBytesWritten(result);
+      bytesRead = unpackBytesRead(result);
       dst.position(initialDstPos + decompressed);
     } else if (dst.hasArray()) {
       long result =
@@ -1425,8 +1402,8 @@ public class QatZipper {
         bytesRead = bytesWritten = 0;
         throw new RuntimeException("QAT decompression failed with error code: " + result);
       }
-      decompressed = bytesWritten(result);
-      bytesRead = bytesRead(result);
+      decompressed = unpackBytesWritten(result);
+      bytesRead = unpackBytesRead(result);
       dst.position(initialDstPos + decompressed);
     } else {
       return decompressViaBothMixed(srcStaging, initialSrcPos, dst, initialDstPos);
@@ -1446,8 +1423,8 @@ public class QatZipper {
       bytesRead = bytesWritten = 0;
       throw new RuntimeException("QAT decompression failed with error code: " + result);
     }
-    int decompressed = bytesWritten(result);
-    bytesRead = bytesRead(result);
+    int decompressed = unpackBytesWritten(result);
+    bytesRead = unpackBytesRead(result);
     dstStaging.position(0);
     dstStaging.limit(decompressed);
     dst.put(dstStaging);
@@ -1773,13 +1750,13 @@ public class QatZipper {
     }
   }
 
-  /** Extract bytes_read from a packed result. Caller must check {@code r >= 0} first. */
-  static int bytesRead(long r) {
+  /** Extract bytes_read from a packed JNI result. Caller must check {@code r >= 0} first. */
+  private static int unpackBytesRead(long r) {
     return (int) (r & 0x7FFFFFFFL);
   }
 
-  /** Extract bytes_written from a packed result. Caller must check {@code r >= 0} first. */
-  static int bytesWritten(long r) {
+  /** Extract bytes_written from a packed JNI result. Caller must check {@code r >= 0} first. */
+  private static int unpackBytesWritten(long r) {
     return (int) ((r >>> 31) & 0x7FFFFFFFL);
   }
 }

@@ -111,13 +111,6 @@ static _Thread_local void* g_zstd_seqprod_state;
 static _Thread_local int g_log_level;
 
 /**
- * Thread-local variable that stores the retry count for compress/decompress
- * operations. Set during setupSession and used by compress/decompress methods
- * to retry on transient QZ_NOSW_NO_INST_ATTACH errors.
- */
-static _Thread_local int g_retry_count;
-
-/**
  * Logs a formatted message to stderr with file and line information.
  *
  * This function logs messages only when the thread-local g_log_level is
@@ -478,7 +471,7 @@ static QzSessionHandle_T* get_or_create_session(JNIEnv* env, int32_t qz_key) {
  * destination lengths respectively.
  *
  * @param env            A pointer to the JNI environment.
- * @param sess           Pointer to the QAT session.
+ * @param qz_key         Value representing unique compression params.
  * @param src_ptr        The source buffer.
  * @param src_len        The size of the source buffer.
  * @param dst_ptr        The destination buffer.
@@ -497,26 +490,19 @@ static int compress_slowpath(JNIEnv* env,
                              unsigned int dst_len,
                              int* bytes_read,
                              int* bytes_written) {
-  int rc;
-  int retry_count = g_retry_count;
-  int fail_retries = 10;
+  int rc = qzCompress(sess, src_ptr, &src_len, dst_ptr, &dst_len, 1);
 
-  do {
-    unsigned int s = src_len, d = dst_len;
-    rc = qzCompress(sess, src_ptr, &s, dst_ptr, &d, 1);
-    if (rc == QZ_OK) {
-      *bytes_read = s;
-      *bytes_written = d;
-      return QZ_OK;
-    }
-  } while (((rc == QZ_NOSW_NO_INST_ATTACH || rc == QZ_TIMEOUT) &&
-            --retry_count > 0) ||
-           (rc == QZ_FAIL && --fail_retries > 0));
+  if (rc != QZ_OK) {
+    (*env)->ThrowNew(env,
+                     (*env)->FindClass(env, "java/lang/IllegalStateException"),
+                     get_err_str(rc));
+    return rc;
+  }
 
-  (*env)->ThrowNew(env,
-                   (*env)->FindClass(env, "java/lang/IllegalStateException"),
-                   get_err_str(rc));
-  return rc;
+  *bytes_read = src_len;
+  *bytes_written = dst_len;
+
+  return QZ_OK;
 }
 
 /**
@@ -526,7 +512,7 @@ static int compress_slowpath(JNIEnv* env,
  * destination lengths respectively.
  *
  * @param env            A pointer to the JNI environment.
- * @param sess           Pointer to the QAT session.
+ * @param qz_key         Value representing unique compression params.
  * @param src_ptr        The source buffer.
  * @param src_len        The size of the source buffer.
  * @param dst_ptr        The destination buffer.
@@ -545,12 +531,11 @@ static inline __attribute__((always_inline)) int compress(JNIEnv* env,
                                                           unsigned int dst_len,
                                                           int* bytes_read,
                                                           int* bytes_written) {
-  unsigned int s = src_len, d = dst_len;
-  int rc = qzCompress(sess, src_ptr, &s, dst_ptr, &d, 1);
+  int rc = qzCompress(sess, src_ptr, &src_len, dst_ptr, &dst_len, 1);
 
   if (likely(rc == QZ_OK)) {
-    *bytes_read = s;
-    *bytes_written = d;
+    *bytes_read = src_len;
+    *bytes_written = dst_len;
     return QZ_OK;
   }
 
@@ -559,10 +544,10 @@ static inline __attribute__((always_inline)) int compress(JNIEnv* env,
 }
 
 /**
- * Decompresses data using a QzSession_T session (slow path with retries).
+ * Compresses data using a QzSession_T session.
  *
  * @param env           JNI environment pointer
- * @param sess          Pointer to the QAT session
+ * @param qz_key        Value representing unique compression params
  * @param src_ptr       Pointer to source data buffer
  * @param src_len       Length of source data
  * @param dst_ptr       Pointer to destination buffer
@@ -579,40 +564,28 @@ static int decompress_slowpath(JNIEnv* env,
                                unsigned int dst_len,
                                int* bytes_read,
                                int* bytes_written) {
-  int rc;
-  int retry_count = g_retry_count;
-  int fail_retries = 10;
+  int rc = qzDecompress(sess, src_ptr, &src_len, dst_ptr, &dst_len);
 
-  do {
-    unsigned int s = src_len, d = dst_len;
-    rc = qzDecompress(sess, src_ptr, &s, dst_ptr, &d);
-    if (rc == QZ_OK || rc == QZ_BUF_ERROR || rc == QZ_DATA_ERROR) {
-      *bytes_read = s;
-      *bytes_written = d;
-      return QZ_OK;
-    }
-    if (rc == QZ_FAIL && (s > 0 || d > 0)) {
-      // Partial progress — output buffer too small for remaining data
-      // but some bytes were consumed/produced.
-      *bytes_read = s;
-      *bytes_written = d;
-      return QZ_OK;
-    }
-  } while (((rc == QZ_NOSW_NO_INST_ATTACH || rc == QZ_TIMEOUT) &&
-            --retry_count > 0) ||
-           (rc == QZ_FAIL && --fail_retries > 0));
-
-  (*env)->ThrowNew(env,
-                   (*env)->FindClass(env, "java/lang/IllegalStateException"),
-                   get_err_str(rc));
-  return rc;
+  if (rc == QZ_OK || rc == QZ_BUF_ERROR || rc == QZ_DATA_ERROR) {
+    // TODO: implement a better solution!
+    // The streaming API requires that we allow BUF_ERROR and DATA_ERROR to
+    // proceed. Caller needs to check bytes_read and bytes_written.
+    *bytes_read = src_len;
+    *bytes_written = dst_len;
+    return QZ_OK;
+  } else {
+    (*env)->ThrowNew(env,
+                     (*env)->FindClass(env, "java/lang/IllegalStateException"),
+                     get_err_str(rc));
+    return rc;
+  }
 }
 
 /**
- * Decompresses data using a QzSession_T session.
+ * Compresses data using a QzSession_T session.
  *
  * @param env           JNI environment pointer
- * @param sess          Pointer to the QAT session
+ * @param qz_key        Value representing unique compression params
  * @param src_ptr       Pointer to source data buffer
  * @param src_len       Length of source data
  * @param dst_ptr       Pointer to destination buffer
@@ -630,24 +603,14 @@ static inline __attribute__((always_inline)) int decompress(
     unsigned int dst_len,
     int* bytes_read,
     int* bytes_written) {
-  unsigned int s = src_len, d = dst_len;
-  int rc = qzDecompress(sess, src_ptr, &s, dst_ptr, &d);
+  int rc = qzDecompress(sess, src_ptr, &src_len, dst_ptr, &dst_len);
 
-  if (likely(rc == QZ_OK) || rc == QZ_BUF_ERROR || rc == QZ_DATA_ERROR) {
-    *bytes_read = s;
-    *bytes_written = d;
+  if (likely(rc == QZ_OK)) {
+    *bytes_read = src_len;
+    *bytes_written = dst_len;
     return QZ_OK;
   }
 
-  if (rc == QZ_FAIL && (s > 0 || d > 0)) {
-    // Partial progress with QZ_FAIL — output buffer too small for remaining
-    // data but some bytes were consumed/produced.
-    *bytes_read = s;
-    *bytes_written = d;
-    return QZ_OK;
-  }
-
-  // QZ_FAIL with no progress or other error — retry in slowpath
   return decompress_slowpath(env, sess, src_ptr, src_len, dst_ptr, dst_len,
                              bytes_read, bytes_written);
 }
@@ -712,11 +675,8 @@ Java_com_intel_qat_InternalJNI_setupSession(JNIEnv* env,
                                             jint polling_mode,
                                             jint data_format,
                                             jint hw_buff_sz,
-                                            jint log_level,
-                                            jint retry_count) {
+                                            jint log_level) {
   (void)clz;
-
-  g_retry_count = retry_count;
 
   int max_level = comp_algo != ZSTD_ALGORITHM ? COMP_LVL_MAXIMUM : 12;
 
@@ -764,7 +724,8 @@ Java_com_intel_qat_InternalJNI_setupSession(JNIEnv* env,
 
   // qzKey is declared as an int in QatZipper.java, so use SetIntField with
   // the cached field ID rather than re-resolving the class and field on
-  // every setupSession call.
+  // every setupSession call. SetLongField (which the original code used)
+  // happened to work by accident on little-endian platforms.
   (*env)->SetIntField(env, qz_obj, g_qzip_qz_key_id, (jint)sess_ptr->qz_key);
 
   return QZ_OK;
@@ -1107,8 +1068,8 @@ Java_com_intel_qat_InternalJNI_decompressBufferBuffer(JNIEnv* env,
  * sub-block starting from start_block, then unpins.  This reduces JNI
  * overhead from N transitions (one per sub-block) to exactly 1.
  *
- * On success (all remaining blocks compressed): returns a packed jlong
- * containing bytes_read and bytes_written (see PACK_RESULT macro).
+ * On success (all remaining blocks compressed): returns a packed jlong of
+ * (bytes_read, bytes_written) via PACK_RESULT.
  *
  * On QZ_BUF_ERROR (destination full mid-way): commits the blocks that DID
  * fit (sizes[start_block..last] are written), and returns
@@ -1183,8 +1144,8 @@ Java_com_intel_qat_InternalJNI_compressFullBytesBytes(JNIEnv* env,
       (unsigned int)src_len -
       (unsigned int)start_block * (unsigned int)block_length;
   unsigned int dst_remaining = (unsigned int)dst_len;
-  int total_written = 0;
   int total_read = 0;
+  int total_written = 0;
   int blocks_completed = 0;
   int rc = QZ_OK;
 
@@ -1197,23 +1158,7 @@ Java_com_intel_qat_InternalJNI_compressFullBytesBytes(JNIEnv* env,
     rc = qzCompress(sess, sp, &chunk, dp, &produced, 1);
 
     if (unlikely(rc != QZ_OK)) {
-      if (rc == QZ_BUF_ERROR || rc == QZ_FAIL) {
-        /* Destination full — stop gracefully with partial progress.
-           QAT returns QZ_FAIL (not QZ_BUF_ERROR) when the buffer is
-           below the minimum viable size for its framing headers. */
-        break;
-      }
-      /* Retry on transient attach errors */
-      int retries = g_retry_count;
-      while (rc == QZ_NOSW_NO_INST_ATTACH && retries > 0) {
-        chunk = (src_remaining < (unsigned int)block_length)
-                    ? src_remaining
-                    : (unsigned int)block_length;
-        produced = dst_remaining;
-        rc = qzCompress(sess, sp, &chunk, dp, &produced, 1);
-        retries--;
-      }
-      if (unlikely(rc != QZ_OK)) break;
+      break;
     }
 
     sizes_ptr[start_block + blocks_completed] = (jint)produced;
@@ -1256,8 +1201,8 @@ Java_com_intel_qat_InternalJNI_compressFullBytesBytes(JNIEnv* env,
  * qzDecompress until all input is consumed, then unpins.  This reduces JNI
  * overhead from N transitions (one per frame) to exactly 1.
  *
- * Returns a packed jlong containing bytes_read and bytes_written on success
- * (see PACK_RESULT macro), or a negative qatzip error code on failure.
+ * Returns a packed jlong of (bytes_read, bytes_written) on success,
+ * or a negative value on failure.
  */
 JNIEXPORT jlong JNICALL
 Java_com_intel_qat_InternalJNI_decompressFullBytesBytes(JNIEnv* env,
@@ -1313,21 +1258,7 @@ Java_com_intel_qat_InternalJNI_decompressFullBytesBytes(JNIEnv* env,
     rc = qzDecompress(sess, sp, &consumed, dp, &produced);
 
     if (unlikely(rc != QZ_OK && rc != QZ_BUF_ERROR && rc != QZ_DATA_ERROR)) {
-      if (rc == QZ_NOSW_NO_INST_ATTACH) {
-        /* Retry on transient attach errors */
-        int retry_count = g_retry_count;
-        while (rc == QZ_NOSW_NO_INST_ATTACH && retry_count > 0) {
-          consumed = src_remaining;
-          produced = dst_remaining;
-          rc = qzDecompress(sess, sp, &consumed, dp, &produced);
-          retry_count--;
-        }
-        if (rc != QZ_OK && rc != QZ_BUF_ERROR && rc != QZ_DATA_ERROR) {
-          break;
-        }
-      } else {
-        break;
-      }
+      break;
     }
 
     if (consumed == 0 && produced == 0) {

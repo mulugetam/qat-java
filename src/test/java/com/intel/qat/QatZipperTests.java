@@ -136,25 +136,6 @@ class QatZipperTests {
   }
 
   @ParameterizedTest
-  @ValueSource(ints = {0, 1, 5, 10})
-  @DisplayName("Builder accepts valid retry counts")
-  void testBuilderRetryCount(int retryCount) {
-    QatZipper zipper = new QatZipper.Builder().retryCount(retryCount).build();
-    assertNotNull(zipper);
-    zipper.end();
-  }
-
-  @Test
-  @DisplayName("Builder throws exception for negative retry count")
-  void testBuilderNegativeRetryCount() {
-    assertThrows(
-        IllegalArgumentException.class,
-        () -> {
-          new QatZipper.Builder().retryCount(-1).build();
-        });
-  }
-
-  @ParameterizedTest
   @EnumSource(QatZipper.PollingMode.class)
   @DisplayName("Builder accepts all polling modes")
   void testBuilderAllPollingModes(QatZipper.PollingMode pollingMode) {
@@ -238,7 +219,6 @@ class QatZipperTests {
             .algorithm(QatZipper.Algorithm.ZSTD)
             .level(6)
             .mode(QatZipper.Mode.AUTO)
-            .retryCount(3)
             .pollingMode(QatZipper.PollingMode.PERIODICAL)
             .dataFormat(QatZipper.DataFormat.DEFLATE_GZIP)
             .hardwareBufferSize(QatZipper.HardwareBufferSize.MAX_BUFFER_SIZE)
@@ -1038,7 +1018,6 @@ class QatZipperTests {
     assertEquals(6, QatZipper.DEFAULT_COMPRESSION_LEVEL_DEFLATE);
     assertEquals(3, QatZipper.DEFAULT_COMPRESSION_LEVEL_ZSTD);
     assertEquals(QatZipper.Mode.AUTO, QatZipper.DEFAULT_MODE);
-    assertEquals(0, QatZipper.DEFAULT_RETRY_COUNT);
     assertEquals(QatZipper.PollingMode.BUSY, QatZipper.DEFAULT_POLLING_MODE);
     assertEquals(QatZipper.DataFormat.DEFLATE_GZIP_EXT, QatZipper.DEFAULT_DATA_FORMAT);
     assertEquals(

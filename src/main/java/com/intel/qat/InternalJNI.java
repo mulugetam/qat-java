@@ -52,8 +52,7 @@ enum InternalJNI {
       int pmode,
       int dataFormat,
       int hwBufferSize,
-      int logLevel,
-      int retryCount);
+      int logLevel);
 
   static native int maxCompressedLength(int qzKey, long sourceSize);
 

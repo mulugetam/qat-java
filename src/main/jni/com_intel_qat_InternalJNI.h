@@ -18,12 +18,11 @@ JNIEXPORT void JNICALL Java_com_intel_qat_InternalJNI_initFieldIDs(JNIEnv*,
 /*
  * Class:     com_intel_qat_InternalJNI
  * Method:    setupSession
- * Signature: (Lcom/intel/qat/QatZipper;IIIIIIII)I
+ * Signature: (Lcom/intel/qat/QatZipper;IIIIIII)I
  */
 JNIEXPORT jint JNICALL Java_com_intel_qat_InternalJNI_setupSession(JNIEnv*,
                                                                    jclass,
                                                                    jobject,
-                                                                   jint,
                                                                    jint,
                                                                    jint,
                                                                    jint,
@@ -252,3 +251,4 @@ JNIEXPORT void JNICALL Java_com_intel_qat_InternalJNI_setLogLevel(JNIEnv*,
 }
 #endif
 #endif
+
