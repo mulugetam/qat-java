@@ -938,7 +938,7 @@ public class QatZipper {
 
     try {
       int compressedSize =
-          zstdCompressCtx.compressDirectByteBuffer(dst, dstPos, dstLen, tempSrc, srcOffset, srcLen);
+          zstdCompressCtx.compressDirectByteBuffer(dst, dstPos, dstLen, tempSrc, 0, srcLen);
 
       if (compressedSize < 0) {
         throw new RuntimeException("ZSTD compression failed with error code: " + compressedSize);

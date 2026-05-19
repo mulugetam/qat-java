@@ -1370,11 +1370,8 @@ JNIEXPORT jint JNICALL Java_com_intel_qat_InternalJNI_teardown(JNIEnv* env,
   }
 
   // Clean up session
-  if (sess_ptr->qz_session) {
-    qzTeardownSession(sess_ptr->qz_session);
-    free(sess_ptr->qz_session);
-    sess_ptr->qz_session = NULL;
-  }
+  free(sess_ptr->qz_session);
+  sess_ptr->qz_session = NULL;
   sess_ptr->reference_count = 0;
   sess_ptr->qz_key = 0;
 
