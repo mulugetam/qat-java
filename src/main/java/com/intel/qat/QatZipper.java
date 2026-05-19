@@ -1117,9 +1117,23 @@ public class QatZipper {
     validateSessionOpen();
     validateByteArrays(src, srcOffset, srcLen, dst, dstOffset, dstLen);
 
-    long result =
-        InternalJNI.compressFullBytesBytes(
-            qzKey, src, srcOffset, srcLen, blockLength, dst, dstOffset, dstLen, sizes, startBlock);
+    long result = -1;
+    if (algorithm != Algorithm.ZSTD) {
+      result =
+          InternalJNI.compressFullBytesBytes(
+              qzKey,
+              src,
+              srcOffset,
+              srcLen,
+              blockLength,
+              dst,
+              dstOffset,
+              dstLen,
+              sizes,
+              startBlock);
+    } else {
+      result = compressZSTDByteArray(src, srcOffset, srcLen, dst, dstOffset, dstLen);
+    }
 
     if (result >= 0) {
       // All remaining blocks compressed successfully
@@ -1163,8 +1177,14 @@ public class QatZipper {
     validateSessionOpen();
     validateByteArrays(src, srcOffset, srcLen, dst, dstOffset, dstLen);
 
-    long result =
-        InternalJNI.decompressFullBytesBytes(qzKey, src, srcOffset, srcLen, dst, dstOffset, dstLen);
+    long result = -1;
+    if (algorithm != Algorithm.ZSTD) {
+      result =
+          InternalJNI.decompressFullBytesBytes(
+              qzKey, src, srcOffset, srcLen, dst, dstOffset, dstLen);
+    } else {
+      result = decompressZSTDByteArray(src, srcOffset, srcLen, dst, dstOffset, dstLen);
+    }
 
     if (result < 0) {
       bytesRead = 0;
