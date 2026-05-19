@@ -483,26 +483,15 @@ static QzSessionHandle_T* get_or_create_session(JNIEnv* env, int32_t qz_key) {
  * @return               QZ_OK (0) if successful, non-zero otherwise.
  */
 static int compress_slowpath(JNIEnv* env,
-                             QzSession_T* sess,
-                             uint8_t* src_ptr,
-                             unsigned int src_len,
-                             uint8_t* dst_ptr,
-                             unsigned int dst_len,
+                             int rc,
                              int* bytes_read,
                              int* bytes_written) {
-  int rc = qzCompress(sess, src_ptr, &src_len, dst_ptr, &dst_len, 1);
-
-  if (rc != QZ_OK) {
-    (*env)->ThrowNew(env,
-                     (*env)->FindClass(env, "java/lang/IllegalStateException"),
-                     get_err_str(rc));
-    return rc;
-  }
-
-  *bytes_read = src_len;
-  *bytes_written = dst_len;
-
-  return QZ_OK;
+  *bytes_read = 0;
+  *bytes_written = 0;
+  (*env)->ThrowNew(env,
+                   (*env)->FindClass(env, "java/lang/IllegalStateException"),
+                   get_err_str(rc));
+  return rc;
 }
 
 /**
@@ -539,8 +528,7 @@ static inline __attribute__((always_inline)) int compress(JNIEnv* env,
     return QZ_OK;
   }
 
-  return compress_slowpath(env, sess, src_ptr, src_len, dst_ptr, dst_len,
-                           bytes_read, bytes_written);
+  return compress_slowpath(env, rc, bytes_read, bytes_written);
 }
 
 /**
@@ -557,28 +545,25 @@ static inline __attribute__((always_inline)) int compress(JNIEnv* env,
  * @return              QZ_OK on success, error code on failure
  */
 static int decompress_slowpath(JNIEnv* env,
-                               QzSession_T* sess,
-                               uint8_t* src_ptr,
-                               unsigned int src_len,
-                               uint8_t* dst_ptr,
-                               unsigned int dst_len,
+                               int rc,
+                               unsigned int src_consumed,
+                               unsigned int dst_produced,
                                int* bytes_read,
                                int* bytes_written) {
-  int rc = qzDecompress(sess, src_ptr, &src_len, dst_ptr, &dst_len);
-
-  if (rc == QZ_OK || rc == QZ_BUF_ERROR || rc == QZ_DATA_ERROR) {
-    // TODO: implement a better solution!
-    // The streaming API requires that we allow BUF_ERROR and DATA_ERROR to
-    // proceed. Caller needs to check bytes_read and bytes_written.
-    *bytes_read = src_len;
-    *bytes_written = dst_len;
+  if (rc == QZ_BUF_ERROR || rc == QZ_DATA_ERROR) {
+    // Report partial progress from the first call. The Java streaming layer
+    // will grow the buffer or read more input and retry.
+    *bytes_read = src_consumed;
+    *bytes_written = dst_produced;
     return QZ_OK;
-  } else {
-    (*env)->ThrowNew(env,
-                     (*env)->FindClass(env, "java/lang/IllegalStateException"),
-                     get_err_str(rc));
-    return rc;
   }
+
+  *bytes_read = 0;
+  *bytes_written = 0;
+  (*env)->ThrowNew(env,
+                   (*env)->FindClass(env, "java/lang/IllegalStateException"),
+                   get_err_str(rc));
+  return rc;
 }
 
 /**
@@ -611,7 +596,7 @@ static inline __attribute__((always_inline)) int decompress(
     return QZ_OK;
   }
 
-  return decompress_slowpath(env, sess, src_ptr, src_len, dst_ptr, dst_len,
+  return decompress_slowpath(env, rc, src_len, dst_len,
                              bytes_read, bytes_written);
 }
 
@@ -1281,7 +1266,7 @@ Java_com_intel_qat_InternalJNI_decompressFullBytesBytes(JNIEnv* env,
   (*env)->ReleasePrimitiveArrayCritical(env, src_arr, (jbyte*)src_ptr,
                                         JNI_ABORT);
 
-  if (unlikely(rc != QZ_OK)) {
+  if (unlikely(rc != QZ_OK && rc != QZ_BUF_ERROR && rc != QZ_DATA_ERROR)) {
     (*env)->ThrowNew(env,
                      (*env)->FindClass(env, "java/lang/IllegalStateException"),
                      get_err_str(rc));

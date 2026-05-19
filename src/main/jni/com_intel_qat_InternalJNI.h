@@ -251,4 +251,3 @@ JNIEXPORT void JNICALL Java_com_intel_qat_InternalJNI_setLogLevel(JNIEnv*,
 }
 #endif
 #endif
-
