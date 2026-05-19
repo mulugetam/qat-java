@@ -482,36 +482,6 @@ static QzSessionHandle_T* get_or_create_session(JNIEnv* env, int32_t qz_key) {
  * destination buffer.
  * @return               QZ_OK (0) if successful, non-zero otherwise.
  */
-static int compress_slowpath(JNIEnv* env,
-                             int rc,
-                             int* bytes_read,
-                             int* bytes_written) {
-  *bytes_read = 0;
-  *bytes_written = 0;
-  (*env)->ThrowNew(env,
-                   (*env)->FindClass(env, "java/lang/IllegalStateException"),
-                   get_err_str(rc));
-  return rc;
-}
-
-/**
- * Compresses a buffer pointed to by the given source pointer and writes it to
- * the destination buffer pointed to by the destination pointer. The read and
- * write of the source and destination buffers is bounded by the source and
- * destination lengths respectively.
- *
- * @param env            A pointer to the JNI environment.
- * @param qz_key         Value representing unique compression params.
- * @param src_ptr        The source buffer.
- * @param src_len        The size of the source buffer.
- * @param dst_ptr        The destination buffer.
- * @param dst_len        The size of the destination buffer.
- * @param bytes_read     An out parameter that stores the bytes read from the
- * source buffer.
- * @param bytes_written  An out parameter that stores the bytes written to the
- * destination buffer.
- * @return               QZ_OK (0) if successful, non-zero otherwise.
- */
 static inline __attribute__((always_inline)) int compress(JNIEnv* env,
                                                           QzSession_T* sess,
                                                           uint8_t* src_ptr,
@@ -528,36 +498,6 @@ static inline __attribute__((always_inline)) int compress(JNIEnv* env,
     return QZ_OK;
   }
 
-  return compress_slowpath(env, rc, bytes_read, bytes_written);
-}
-
-/**
- * Compresses data using a QzSession_T session.
- *
- * @param env           JNI environment pointer
- * @param qz_key        Value representing unique compression params
- * @param src_ptr       Pointer to source data buffer
- * @param src_len       Length of source data
- * @param dst_ptr       Pointer to destination buffer
- * @param dst_len       Length of destination buffer
- * @param bytes_read    Pointer to store number of bytes read from source
- * @param bytes_written Pointer to store number of bytes written to destination
- * @return              QZ_OK on success, error code on failure
- */
-static int decompress_slowpath(JNIEnv* env,
-                               int rc,
-                               unsigned int src_consumed,
-                               unsigned int dst_produced,
-                               int* bytes_read,
-                               int* bytes_written) {
-  if (rc == QZ_BUF_ERROR || rc == QZ_DATA_ERROR) {
-    // Report partial progress from the first call. The Java streaming layer
-    // will grow the buffer or read more input and retry.
-    *bytes_read = src_consumed;
-    *bytes_written = dst_produced;
-    return QZ_OK;
-  }
-
   *bytes_read = 0;
   *bytes_written = 0;
   (*env)->ThrowNew(env,
@@ -567,10 +507,10 @@ static int decompress_slowpath(JNIEnv* env,
 }
 
 /**
- * Compresses data using a QzSession_T session.
+ * Decompresses data using a QzSession_T session.
  *
  * @param env           JNI environment pointer
- * @param qz_key        Value representing unique compression params
+ * @param sess          Pointer to the QAT session
  * @param src_ptr       Pointer to source data buffer
  * @param src_len       Length of source data
  * @param dst_ptr       Pointer to destination buffer
@@ -596,8 +536,12 @@ static inline __attribute__((always_inline)) int decompress(
     return QZ_OK;
   }
 
-  return decompress_slowpath(env, rc, src_len, dst_len,
-                             bytes_read, bytes_written);
+  *bytes_read = 0;
+  *bytes_written = 0;
+  (*env)->ThrowNew(env,
+                   (*env)->FindClass(env, "java/lang/IllegalStateException"),
+                   get_err_str(rc));
+  return rc;
 }
 
 /* ===========================================================================

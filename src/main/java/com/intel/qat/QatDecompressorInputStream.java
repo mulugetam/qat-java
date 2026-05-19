@@ -274,7 +274,7 @@ public class QatDecompressorInputStream extends FilterInputStream {
                 outputBufferLimit - outputPosition);
         inputPosition += qzip.getBytesRead();
         outputPosition += decompressed;
-      } catch (ZstdException zstde) {
+      } catch (ZstdException | IllegalStateException e) {
         growOutputBuffer();
       }
       if (decompressed == 0 && inputPosition == 0) growOutputBuffer();
